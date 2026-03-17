@@ -11,7 +11,7 @@ from utils import parse_map, draw_bar
 
 # ── Физика (px/кадр, НЕ px/s) ────────────────────────────────────────────────
 GRAVITY      = 0.7    # добавляется к change_y каждый кадр
-SPEED        = 5      # change_x в px/кадр
+SPEED        = 8      # change_x в px/кадр
 JUMP_V       = 14     # начальный change_y при прыжке
 BUBBLE_DRAIN = 0.25   # ед/с пассивная утечка пузыря
 
@@ -200,46 +200,161 @@ class Chapter1View(BaseChapter):
                      self._ww, self._wh)
 
     def on_draw(self) -> None:
+        import math
         self.clear()
-        self.background_color = (22, 32, 75)
+        # Ночной индустриальный город — глубокий сине-лиловый
+        self.background_color = (10, 12, 32)
 
         with self.wcam.activate():
-            for x0, x1 in self._wind_ranges:
+            cam_x, cam_y = self.wcam.position
+
+            # ── СЛОЙ 1: звёздное небо ────────────────────────────────────────
+            import random as _r; _r.seed(7)
+            for _ in range(60):
+                sx = _r.randint(0, int(self._ww))
+                sy = _r.randint(int(self._wh * 0.3), int(self._wh))
+                a  = _r.randint(60, 140)
+                arcade.draw_circle_filled(
+                    sx - cam_x * 0.05, sy, _r.randint(1, 2), (200, 210, 255, a))
+
+            # ── СЛОЙ 2: далёкие здания — сиреневый горизонт ──────────────────
+            far_bld = [(80,220),(190,310),(340,190),(470,270),
+                       (600,210),(760,330),(880,170),(1020,240),
+                       (1180,290),(1340,200),(1500,250)]
+            for bx, bh in far_bld:
+                px = bx - cam_x * 0.12
+                # Корпус здания с градиентом (верх светлее)
+                arcade.draw_rectangle_filled(px, bh//2, 72, bh, (22, 20, 52))
+                arcade.draw_rectangle_filled(px, bh - 12, 72, 20, (32, 28, 68))
+                # Окна — тёплые, каждое отдельно
+                for row in range(18, bh - 18, 32):
+                    for col in (-20, 0, 20):
+                        lit = (int(px)+col + row) % 5 != 0
+                        c = (190, 165, 70, 150) if lit else (35, 33, 58)
+                        arcade.draw_rectangle_filled(px + col, row, 9, 12, c)
+                # Антенна на крыше
+                arcade.draw_line(px, bh, px, bh+18, (40, 36, 72), 2)
+                arcade.draw_circle_filled(px, bh+18, 3, (210, 80, 80, 160))
+
+            # ── СЛОЙ 3: ближние тёмные здания без окон ───────────────────────
+            near_bld = [(50,140),(260,105),(440,150),(650,115),
+                        (850,160),(1060,130),(1290,145),(1480,120)]
+            for bx, bh in near_bld:
+                px = bx - cam_x * 0.28
+                arcade.draw_rectangle_filled(px, bh//2, 95, bh, (16, 14, 38))
+                # Верхний контур
+                arcade.draw_line(px-47, bh, px+47, bh, (30, 26, 60), 1)
+
+            # ── Туман у пола — атмосфера ─────────────────────────────────────
+            for i in range(5):
                 arcade.draw_rectangle_filled(
-                    (x0 + x1) / 2, self._wh / 2,
-                    x1 - x0, self._wh, (80, 140, 255, 30),
-                )
-            self.walls.draw()
-            self.spikes.draw()
-            self.soaps.draw()
+                    self._ww/2, i*18+9, self._ww, 18, (40, 60, 110, 22-i*4))
+
+            # ── Ветровые зоны — холодное синее свечение ──────────────────────
+            for x0, x1 in self._wind_ranges:
+                mid = (x0 + x1) / 2
+                for layer, (alpha, extra) in enumerate([(22,30),(14,12),(7,0)]):
+                    arcade.draw_rectangle_filled(
+                        mid, self._wh/2, (x1-x0)+extra, self._wh,
+                        (60, 120, 240, alpha))
+                arcade.draw_line(x0, 0, x0, self._wh, (80, 150, 255, 60), 1)
+                arcade.draw_line(x1, 0, x1, self._wh, (80, 150, 255, 60), 1)
+                # Иконка ветра
+                arcade.draw_text("≋", mid, 20, (80, 160, 255, 120), 14,
+                                  anchor_x="center")
+
+            # ── Стены: тёмно-синий металл с рёбрами ──────────────────────────
+            for spr in self.walls:
+                wx, wy = spr.center_x, spr.center_y
+                ww, wh = spr.width, spr.height
+                arcade.draw_rectangle_filled(wx, wy, ww, wh, (28, 32, 70))
+                # Светлая верхняя грань
+                arcade.draw_line(wx-ww//2, wy+wh//2,
+                                  wx+ww//2, wy+wh//2, (55, 70, 130), 1)
+                # Тёмная нижняя грань
+                arcade.draw_line(wx-ww//2, wy-wh//2,
+                                  wx+ww//2, wy-wh//2, (14, 16, 40), 1)
+
+            # ── Шипы — красно-оранжевые треугольники ─────────────────────────
+            for spr in self.spikes:
+                sx, sy = spr.center_x, spr.center_y
+                hw = spr.width // 2
+                arcade.draw_triangle_filled(
+                    sx - hw, sy - 4, sx + hw, sy - 4, sx, sy + 16,
+                    (190, 45, 60))
+                arcade.draw_triangle_outline(
+                    sx - hw, sy - 4, sx + hw, sy - 4, sx, sy + 16,
+                    (230, 80, 90), 1)
+                # Блик на острие
+                arcade.draw_circle_filled(sx, sy+14, 2, (255, 160, 160, 180))
+
+            # ── Мыло — переливчатые пузырьки ─────────────────────────────────
+            for s in self.soaps:
+                cx2, cy2 = s.center_x, s.center_y
+                # Внешнее мягкое свечение
+                arcade.draw_circle_filled(cx2, cy2, 18, (100, 180, 255, 28))
+                # Основной пузырь
+                arcade.draw_circle_filled(cx2, cy2, 12, (160, 210, 255, 90))
+                arcade.draw_circle_outline(cx2, cy2, 12, (210, 235, 255), 2)
+                # Радужный отлив
+                arcade.draw_arc_outline(cx2-2, cy2+2, 14, 14,
+                                         (190, 230, 255, 110), 35, 145, 2)
+                # Два блика
+                arcade.draw_circle_filled(cx2-4, cy2+5, 3, (255,255,255,160))
+                arcade.draw_circle_filled(cx2+5, cy2-3, 2, (255,255,255,100))
+
+            # ── Финиш — портал с пульсацией ──────────────────────────────────
             self._finish_sl.draw()
+            if self.finish:
+                fx2, fy2 = self.finish.center_x, self.finish.center_y
+                for ring, (r2, a2) in enumerate([(45,35),(35,55),(26,70)]):
+                    arcade.draw_circle_filled(fx2, fy2, r2, (50, 210, 110, a2))
+                arcade.draw_circle_outline(fx2, fy2, 26, (120, 255, 160), 2)
+                arcade.draw_text("▶", fx2, fy2, (180, 255, 200), 14,
+                                   anchor_x="center", anchor_y="center",
+                                   bold=True)
+
             self.ps.draw()
+
+            # ── Бабл — стеклянный пузырь ─────────────────────────────────────
             if self.player:
                 p = self.player
-                # Пузырь
-                arcade.draw_circle_filled(p.center_x, p.center_y, 18,
-                                          (*C_BABL, 90))
-                arcade.draw_circle_outline(p.center_x, p.center_y, 18,
-                                           (200, 235, 255), 2)
-                # Мальчик
-                arcade.draw_circle_filled(p.center_x, p.center_y - 1, 8,
-                                          (255, 210, 170))
-                # Блик
-                arcade.draw_circle_filled(p.center_x - 5, p.center_y + 7,
-                                          3, (255, 255, 255, 130))
+                cx3, cy3 = p.center_x, p.center_y
+                # Мягкий ореол
+                arcade.draw_circle_filled(cx3, cy3, 30, (70, 140, 255, 18))
+                # Полупрозрачный шар
+                arcade.draw_circle_filled(cx3, cy3, 21, (80, 155, 245, 70))
+                # Контур — чуть переливчатый
+                arcade.draw_circle_outline(cx3, cy3, 21, (170, 215, 255), 2)
+                # Внутренний блик-дуга
+                arcade.draw_arc_outline(cx3-3, cy3+3, 26, 26,
+                                         (210, 240, 255, 90), 25, 155, 3)
+                # Лицо мальчика
+                arcade.draw_circle_filled(cx3, cy3-1, 9, (255, 215, 175))
+                arcade.draw_circle_filled(cx3-3, cy3, 2, (55, 38, 18))
+                arcade.draw_circle_filled(cx3+3, cy3, 2, (55, 38, 18))
+                # Улыбка
+                arcade.draw_arc_outline(cx3, cy3-3, 8, 5,
+                                         (160, 100, 60), 200, 340, 1)
+                # Блик стекла
+                arcade.draw_circle_filled(cx3-7, cy3+9, 4, (255,255,255,100))
 
         with self.gcam.activate():
+            # HUD-полоса снизу
+            arcade.draw_rectangle_filled(
+                SCREEN_W//2, 24, SCREEN_W, 48, (8, 10, 28, 215))
+            arcade.draw_line(0, 48, SCREEN_W, 48, (45, 75, 150, 100), 1)
             self._hud()
-            draw_bar(130, SCREEN_H - 48, 200, 16,
+            draw_bar(130, SCREEN_H-48, 200, 16,
                      self.bubble, MAX_BUBBLE,
-                     fill=(80, 190, 255), label="Пузырь")
+                     fill=(90, 185, 255), label="Пузырь")
             if self.bubble < 30:
-                self._txt_warn.text = "Пузырь лопается!"
+                self._txt_warn.text = "⚠ Пузырь лопается!"
                 self._txt_warn.draw()
             arcade.draw_text(
-                "WASD/стрелки — движение  |  ↑/W/ПРОБЕЛ — прыжок  "
+                "WASD/← → — движение  |  ↑/W/ПРОБЕЛ — прыжок  "
                 "|  S — мыло (+25)  |  X — шипы",
-                SCREEN_W // 2, 12, (120, 150, 200), 11, anchor_x="center",
+                SCREEN_W//2, 12, (90, 130, 200), 11, anchor_x="center",
             )
 
     def on_key_press(self, key: int, mod: int) -> None:
