@@ -148,104 +148,165 @@ class Chapter8View(BaseChapter):
     # ── Draw ──────────────────────────────────────────────────────────────────
     def on_draw(self) -> None:
         self.clear()
-        self.background_color = (60, 45, 30)
+        self.background_color = (52, 36, 22)
 
-        # Скроллящиеся полосы
-        sw = 200
-        offset = int(self._dist % sw)
-        for i in range(-1, SCREEN_W // sw + 2):
-            sx = i * sw - offset
-            shade = 55 + (i % 2) * 12
+        goal = _GOAL[self.level - 1]
+        pct  = min(1.0, self._dist / goal)
+
+        # ── Фон лаборатории — технические плиты ──────────────────────────────
+        tile_w = 120
+        offset = int(self._dist * 0.6) % tile_w
+        for i in range(-1, SCREEN_W // tile_w + 2):
+            tx = i * tile_w - offset
+            shade_a = 18 if i % 2 == 0 else 12
             arcade.draw_rectangle_filled(
-                sx + sw // 2, SCREEN_H // 2,
-                sw, SCREEN_H,
-                (shade, shade - 10, shade - 20),
-            )
+                tx + tile_w // 2, SCREEN_H // 2,
+                tile_w - 1, SCREEN_H, (60 + shade_a, 44 + shade_a // 2, 25, 220))
+        # Горизонтальные трубы/кабели
+        for y_pipe, col_pipe in [(GROUND_Y + 110, (110, 70, 35, 130)),
+                                  (GROUND_Y + 160, (140, 90, 45, 100)),
+                                  (SCREEN_H - 60,  (90,  55, 28, 80))]:
+            arcade.draw_rectangle_filled(
+                SCREEN_W // 2, y_pipe, SCREEN_W, 6, col_pipe)
+        # Вертикальные стойки каркаса
+        frame_offset = int(self._dist * 0.9) % 200
+        for i in range(-1, SCREEN_W // 200 + 2):
+            fx2 = i * 200 - frame_offset
+            arcade.draw_rectangle_filled(
+                fx2, SCREEN_H // 2, 4, SCREEN_H, (70, 50, 28, 180))
+            arcade.draw_circle_filled(fx2, GROUND_Y + 35, 5, (100, 72, 40))
 
-        # Земля
+        # ── Пол — технический настил ─────────────────────────────────────────
         arcade.draw_rectangle_filled(
-            SCREEN_W // 2, GROUND_Y - 15,
-            SCREEN_W, 30, (80, 60, 35),
-        )
+            SCREEN_W // 2, GROUND_Y - 18, SCREEN_W, 36, (65, 45, 24))
+        # Разметка пола
+        for xi in range(0, SCREEN_W + 60, 60):
+            fx3 = xi - int(self._dist * 0.4) % 60
+            arcade.draw_line(fx3, GROUND_Y - 18, fx3, GROUND_Y + 18,
+                             (90, 65, 38, 110), 1)
+        # Неоновая полоска вдоль пола
+        neon_pulse = int(40 + 20 * math.sin(self._dist * 0.05))
+        arcade.draw_rectangle_filled(
+            SCREEN_W // 2, GROUND_Y + 17, SCREEN_W, 3,
+            (180, neon_pulse + 60, 30, 160))
 
-        # Колесо (декоративное)
-        wr = 90
-        wcx, wcy = SCREEN_W // 2, GROUND_Y + wr
-        arcade.draw_circle_outline(wcx, wcy, wr, (100, 80, 55), 6)
+        # ── Большое колесо — хромированное ───────────────────────────────────
+        wr  = 95
+        wcx = SCREEN_W // 2
+        wcy = GROUND_Y + wr + 8
+        # Внешнее свечение
+        arcade.draw_circle_filled(wcx, wcy, wr + 14, (140, 90, 30, 30))
+        # Обод
+        arcade.draw_circle_outline(wcx, wcy, wr, (170, 120, 55), 5)
+        arcade.draw_circle_outline(wcx, wcy, wr - 8, (130, 95, 40, 130), 2)
+        # Спицы
         for i in range(8):
             a = math.radians(self._wheel + i * 45)
             arcade.draw_line(
                 wcx, wcy,
                 wcx + math.cos(a) * wr,
                 wcy + math.sin(a) * wr,
-                (120, 90, 60), 3,
-            )
+                (155, 110, 55), 3)
+        # Ступицa
+        arcade.draw_circle_filled(wcx, wcy, 12, (130, 90, 40))
+        arcade.draw_circle_outline(wcx, wcy, 12, (190, 150, 80), 2)
 
-        self.obstacles.draw()
+        # ── Препятствия — лабораторные контейнеры ───────────────────────────
+        for obs in self.obstacles:
+            ox, oy = obs.center_x, obs.center_y
+            ow, oh = obs.width, obs.height
+            # Основной блок
+            arcade.draw_rectangle_filled(ox, oy, ow, oh, obs.color)
+            # Неоновая обводка
+            r_col, g_col, b_col = obs.color[:3]  # arcade 3 даёт RGBA
+            border_c = (min(255, r_col + 60), min(255, g_col + 60),
+                        min(255, b_col + 60))
+            arcade.draw_rectangle_outline(ox, oy, ow, oh, border_c, 2)
+            # Предупреждающая диагональная полоска
+            arcade.draw_line(ox - ow // 2, oy - oh // 2,
+                             ox + ow // 2, oy + oh // 2,
+                             (255, 220, 0, 80), 2)
+            # Блик
+            arcade.draw_rectangle_filled(
+                ox - ow // 4, oy + oh // 4, ow // 4, oh // 6,
+                (255, 255, 255, 40))
+
         self.ps.draw()
 
-        # Игрок
+        # ── Шерри — хомячка-раннер ───────────────────────────────────────────
         if self.player:
             p = self.player
-            # Мигание при неуязвимости
             flashing = self._hurt_cd > 0 and int(self._hurt_cd * 8) % 2
             bc = (255, 100, 100) if flashing else C_SHERRY
-
+            # Тень
+            arcade.draw_ellipse_filled(
+                p.center_x + 3, p.center_y - 12, 30, 8, (0, 0, 0, 80))
+            # Тело
             arcade.draw_ellipse_filled(p.center_x, p.center_y, 32, 28, bc)
             # Щёки
             arcade.draw_circle_filled(
-                p.center_x - 12, p.center_y - 2, 9, (220, 160, 100)
-            )
+                p.center_x - 13, p.center_y - 2, 9, (210, 150, 90))
             arcade.draw_circle_filled(
-                p.center_x + 12, p.center_y - 2, 9, (220, 160, 100)
-            )
-            # Глаза
+                p.center_x + 13, p.center_y - 2, 9, (210, 150, 90))
+            # Глаза — блестящие
             arcade.draw_circle_filled(
-                p.center_x - 6, p.center_y + 8, 4, (40, 20, 10)
-            )
+                p.center_x - 6, p.center_y + 8, 5, (30, 18, 8))
             arcade.draw_circle_filled(
-                p.center_x + 6, p.center_y + 8, 4, (40, 20, 10)
-            )
-            # Ушки
+                p.center_x + 6, p.center_y + 8, 5, (30, 18, 8))
+            arcade.draw_circle_filled(
+                p.center_x - 5, p.center_y + 9, 2, (255, 255, 255))
+            arcade.draw_circle_filled(
+                p.center_x + 7, p.center_y + 9, 2, (255, 255, 255))
+            # Ушки с розовым внутри
             arcade.draw_ellipse_filled(
-                p.center_x - 8, p.center_y + 20, 8, 14, bc
-            )
+                p.center_x - 9, p.center_y + 20, 9, 15, bc)
             arcade.draw_ellipse_filled(
-                p.center_x + 8, p.center_y + 20, 8, 14, bc
-            )
+                p.center_x + 9, p.center_y + 20, 9, 15, bc)
+            arcade.draw_ellipse_filled(
+                p.center_x - 9, p.center_y + 21, 5, 9, (220, 140, 140))
+            arcade.draw_ellipse_filled(
+                p.center_x + 9, p.center_y + 21, 5, 9, (220, 140, 140))
+            # Нос
+            arcade.draw_circle_filled(
+                p.center_x, p.center_y + 2, 3, (200, 100, 100))
 
-        # HUD
+        # ── HUD ──────────────────────────────────────────────────────────────
         with self.gcam.activate():
-            self._hud()
-            for i in range(_LIVES):
-                color = (220, 60, 80) if i < self._lives else (60, 50, 55)
-                arcade.draw_text(
-                    "♥", 12 + i * 30, SCREEN_H - 52, color, 22,
-                )
-            arcade.draw_text(
-                f"Скорость: {self._spd:.0f} пкс/с",
-                SCREEN_W // 2, SCREEN_H - 48,
-                (200, 180, 140), 12, anchor_x="center",
-            )
-            # Полоска прогресса
-            goal = _GOAL[self.level - 1]
-            pct = min(1.0, self._dist / goal)
             arcade.draw_rectangle_filled(
-                SCREEN_W // 2, 20, 300, 14, (40, 35, 30)
+                SCREEN_W // 2, 24, SCREEN_W, 48, (35, 22, 10, 210))
+            arcade.draw_line(0, 48, SCREEN_W, 48, (110, 75, 35, 130), 1)
+            self._hud()
+            # Жизни
+            for i in range(_LIVES):
+                color = (200, 55, 75) if i < self._lives else (45, 42, 50)
+                arcade.draw_text("♥", 12 + i * 30, SCREEN_H - 52, color, 22)
+            # Скорость с неоновым цветом
+            speed_col = (min(255, int(180 + pct * 60)),
+                         min(255, int(130 + pct * 60)), 60)
+            arcade.draw_text(
+                f"Скорость: {self._spd:.0f}",
+                SCREEN_W // 2, SCREEN_H - 48,
+                speed_col, 12, anchor_x="center",
             )
+            # Прогресс-бар — неоновый
+            bar_x, bar_y, bar_w = SCREEN_W // 2, 22, 320
+            arcade.draw_rectangle_filled(bar_x, bar_y, bar_w, 14, (38, 26, 12))
             if pct > 0:
                 arcade.draw_rectangle_filled(
-                    SCREEN_W // 2 - 150 + 150 * pct,
-                    20, 300 * pct, 14, (180, 120, 50),
-                )
+                    bar_x - bar_w / 2 + bar_w * pct / 2,
+                    bar_y, bar_w * pct, 14,
+                    (min(255, int(160 + pct * 80)),
+                     min(255, int(100 + pct * 60)), 40))
+            arcade.draw_rectangle_outline(bar_x, bar_y, bar_w, 14,
+                                          (120, 82, 38, 160), 1)
             arcade.draw_text(
                 f"{int(pct * 100)}%",
-                SCREEN_W // 2, 20, (220, 200, 160), 10,
+                bar_x, bar_y, (220, 185, 130), 10,
                 anchor_x="center", anchor_y="center",
             )
             arcade.draw_text(
                 "ПРОБЕЛ / ↑ — прыжок",
-                10, 12, (160, 145, 120), 11,
+                10, 12, (175, 140, 90), 11,
             )
 
     # ── Input ─────────────────────────────────────────────────────────────────

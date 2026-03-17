@@ -211,32 +211,168 @@ class Chapter2View(BaseChapter):
                      self._ww, self._wh)
 
     def on_draw(self) -> None:
+        import random as _rnd
         self.clear()
-        self.background_color = (6, 4, 14)
+        self.background_color = (5, 3, 12)
         lr = int(LIGHT_R_MAX * self.candle / MAX_CANDLE)
 
         with self.wcam.activate():
+            # ── Каменная текстура стен подземелья ───────────────────────────
+            cam_x, cam_y = self.wcam.position
+            # Горизонтальные трещины в стенах
+            _rnd.seed(13)
+            for _ in range(40):
+                cx2 = _rnd.randint(0, int(self._ww))
+                cy2 = _rnd.randint(0, int(self._wh))
+                w2  = _rnd.randint(20, 80)
+                arcade.draw_line(cx2, cy2, cx2 + w2, cy2 + _rnd.randint(-4, 4),
+                                 (30, 24, 45, 70), 1)
+            # Факелы на стенах (декоративные)
+            for tx, ty in [(160, 200), (640, 350), (320, 520),
+                           (800, 180), (480, 700), (160, 860),
+                           (720, 960), (400, 1100), (800, 1250)]:
+                dist_to_player = 9999.0
+                if self.player:
+                    dist_to_player = math.sqrt(
+                        (tx - self.player.center_x) ** 2
+                        + (ty - self.player.center_y) ** 2)
+                if dist_to_player < lr + 60:
+                    # Настенное крепление
+                    arcade.draw_rectangle_filled(tx, ty - 8, 6, 14,
+                                                 (70, 55, 35))
+                    # Огонь факела
+                    import math as _m
+                    flicker = 5 + 3 * _m.sin(tx * 0.3 + ty * 0.2)
+                    arcade.draw_triangle_filled(
+                        tx - int(flicker), ty,
+                        tx + int(flicker), ty,
+                        tx, ty + int(flicker * 2.5),
+                        (220, 120, 30, 180))
+                    arcade.draw_triangle_filled(
+                        tx - int(flicker * 0.5), ty + 4,
+                        tx + int(flicker * 0.5), ty + 4,
+                        tx, ty + int(flicker * 2),
+                        (255, 200, 60, 200))
+                    arcade.draw_circle_filled(tx, ty, int(flicker * 1.4) + 18,
+                                             (200, 100, 30, 18))
+
+            # ── Стены с каменной кладкой ─────────────────────────────────────
             self.walls.draw()
-            self.oils.draw()
+            for spr in self.walls:
+                # Имитация кирпичей
+                sw = int(spr.width)
+                sh = int(spr.height)
+                for bx in range(-sw // 2 + 10, sw // 2, 20):
+                    arcade.draw_line(
+                        spr.center_x + bx, spr.center_y - sh // 2,
+                        spr.center_x + bx, spr.center_y + sh // 2,
+                        (40, 32, 55, 80), 1)
+
+            # ── Масло — светящиеся флаконы ───────────────────────────────────
+            for oil in self.oils:
+                # Свечение
+                arcade.draw_circle_filled(
+                    oil.center_x, oil.center_y, 18, (200, 120, 20, 50))
+                # Флакон — прямоугольник с горлышком
+                arcade.draw_rectangle_filled(
+                    oil.center_x, oil.center_y - 2, 14, 18, (180, 100, 20))
+                arcade.draw_rectangle_filled(
+                    oil.center_x, oil.center_y + 11, 6, 8, (140, 80, 15))
+                # Блик
+                arcade.draw_rectangle_filled(
+                    oil.center_x - 3, oil.center_y + 2, 3, 8,
+                    (255, 200, 100, 140))
+
             self._finish_sl.draw()
+            if self.finish:
+                arcade.draw_circle_filled(
+                    self.finish.center_x, self.finish.center_y,
+                    40, (60, 180, 100, 40))
+
             if self.player:
-                # Рисуем только врагов в зоне света через SpriteList
+                # ── Видимые враги ────────────────────────────────────────────
                 visible_enemies = arcade.SpriteList()
                 for e in self.enemies:
                     d = math.sqrt((e.center_x - self.player.center_x) ** 2
                                    + (e.center_y - self.player.center_y) ** 2)
                     if d < lr + 20:
                         visible_enemies.append(e)
+                        # Глаза теней (светятся в темноте)
+                        arcade.draw_circle_filled(
+                            e.center_x - 6, e.center_y + 12, 3, (160, 60, 200))
+                        arcade.draw_circle_filled(
+                            e.center_x + 6, e.center_y + 12, 3, (160, 60, 200))
                 visible_enemies.draw()
+
                 self._aura.draw()
                 self.ps.draw()
+
+                # ── Рыцарь Викс ──────────────────────────────────────────────
                 p = self.player
-                arcade.draw_rectangle_filled(
-                    p.center_x, p.center_y, 28, 44, C_VIKS)
-                arcade.draw_circle_filled(
-                    p.center_x, p.center_y + 26, 7, (245, 165, 40))
+                cx, cy = p.center_x, p.center_y
+
+                # Тень под персонажем
+                arcade.draw_ellipse_filled(cx + 2, cy - 22, 24, 8, (0, 0, 0, 70))
+                # Плащ (треугольник сзади)
+                arcade.draw_triangle_filled(
+                    cx - 14, cy - 20, cx + 14, cy - 20, cx, cy + 4,
+                    (40, 35, 60))
+                # Тело — доспех
+                arcade.draw_rectangle_filled(cx, cy, 24, 38, C_VIKS)
+                # Нагрудник — стальной блик
+                arcade.draw_rectangle_filled(cx, cy + 5, 20, 22, (105, 110, 130))
+                arcade.draw_rectangle_filled(cx - 4, cy + 10, 5, 12, (130, 135, 155))
+                # Поножи
+                arcade.draw_rectangle_filled(cx - 5, cy - 16, 8, 10, (90, 95, 115))
+                arcade.draw_rectangle_filled(cx + 5, cy - 16, 8, 10, (90, 95, 115))
+                # Шлем с забралом
+                arcade.draw_rectangle_filled(cx, cy + 25, 22, 14, (85, 90, 108))
+                arcade.draw_rectangle_filled(cx, cy + 29, 14, 6, (65, 70, 88))
+                # Прорезь забрала
+                arcade.draw_rectangle_filled(cx - 3, cy + 30, 12, 2, (20, 18, 30))
+
+                # ── Красивая свеча ────────────────────────────────────────────
+                # Держатель свечи (рука)
+                arcade.draw_rectangle_filled(cx + 14, cy + 8, 4, 16, (80, 75, 100))
+                # Подсвечник
+                arcade.draw_rectangle_filled(cx + 14, cy + 18, 10, 4, (140, 120, 60))
+                # Воск — тело свечи
+                arcade.draw_rectangle_filled(cx + 14, cy + 26, 6, 16, (245, 238, 210))
+                # Воск подтёкший
+                arcade.draw_ellipse_filled(cx + 12, cy + 20, 8, 4, (235, 228, 195))
+                arcade.draw_ellipse_filled(cx + 16, cy + 21, 6, 3, (235, 228, 195))
+                # Фитиль
+                arcade.draw_line(cx + 14, cy + 34, cx + 15, cy + 38,
+                                 (30, 22, 10), 2)
+                # Пламя свечи
+                candle_ratio = max(0.0, self.candle / MAX_CANDLE)
+                if candle_ratio > 0:
+                    fa = min(255, int(230 * candle_ratio))
+                    # Внешнее свечение
+                    arcade.draw_circle_filled(
+                        cx + 14, cy + 44, int(12 * candle_ratio) + 4,
+                        (240, 160, 30, int(60 * candle_ratio)))
+                    # Основное пламя
+                    arcade.draw_triangle_filled(
+                        cx + 9,  cy + 38,
+                        cx + 19, cy + 38,
+                        cx + 14, cy + 52,
+                        (245, 140, 30, fa))
+                    # Внутреннее белое ядро
+                    arcade.draw_triangle_filled(
+                        cx + 11, cy + 39,
+                        cx + 17, cy + 39,
+                        cx + 14, cy + 48,
+                        (255, 220, 120, min(255, fa + 30)))
+                    # Яркое ядро
+                    arcade.draw_circle_filled(
+                        cx + 14, cy + 41, int(3 * candle_ratio),
+                        (255, 245, 200, fa))
 
         with self.gcam.activate():
+            arcade.draw_rectangle_filled(
+                SCREEN_W // 2, 24, SCREEN_W, 48, (8, 5, 18, 210))
+            arcade.draw_line(0, 48, SCREEN_W, 48, (80, 60, 30, 120), 1)
             self._hud()
             draw_bar(130, SCREEN_H - 48, 200, 16,
                      self.candle, MAX_CANDLE,
@@ -245,9 +381,9 @@ class Chapter2View(BaseChapter):
                 self._txt_warn.text = "Свеча гаснет!"
                 self._txt_warn.draw()
             arcade.draw_text(
-                "WASD/стрелки — движение  |  O — масло (+30)  "
-                "|  Враги и ветер гасят свечу",
-                SCREEN_W // 2, 12, (140, 120, 80), 11, anchor_x="center",
+                "WASD — движение  |  O — масло (+30)  "
+                "|  Тени и ветер гасят свечу",
+                SCREEN_W // 2, 12, (130, 110, 70), 11, anchor_x="center",
             )
 
     def on_key_press(self, key: int, mod: int) -> None:

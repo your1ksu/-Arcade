@@ -72,3 +72,11 @@ def get_all_scores() -> list:
 
 def all_complete() -> bool:
     return all(_unlocked)
+
+
+def reset_all() -> None:
+    """Полностью обнуляет прогресс — только 1-я глава остаётся открытой."""
+    global _unlocked, _scores
+    _unlocked = [True] + [False] * 7
+    _scores   = [0] * 8
+    _write()

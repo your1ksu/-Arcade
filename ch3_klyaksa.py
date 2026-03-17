@@ -39,6 +39,14 @@ ENEMY_BULLET_SPD = 6  # px/кадр скорость серого снаряда
 MAX_LIVES   = 3
 HURT_CD     = 1.2     # секунд неуязвимости после получения урона
 
+# Клавиши стрельбы — одинаковые физические клавиши на RU и EN раскладке:
+#   F  = стрелять по ближайшему врагу (автонаводка)
+#   J  = стрелять вправо
+#   G / Э = стрелять влево  (arcade.key.G == arcade.key.Э физически)
+SHOOT_KEYS_AUTO  = (arcade.key.F,)            # автонаводка — ближайший враг
+SHOOT_KEYS_RIGHT = (arcade.key.J,)            # вправо
+SHOOT_KEYS_LEFT  = (arcade.key.G,)            # влево
+
 # ── Карты ─────────────────────────────────────────────────────────────────────
 _MAPS = [
     # Уровень 1 — три этажа
@@ -341,51 +349,124 @@ class Chapter3View(BaseChapter):
 
     # ── Draw ──────────────────────────────────────────────────────────────────
     def on_draw(self) -> None:
+        import math, random as _rnd
         self.clear()
-        self.background_color = (28, 16, 42)
+        self.background_color = (18, 10, 30)
 
         with self.wcam.activate():
+            cam_x, cam_y = self.wcam.position
+
+            # ── Фон: стены галереи с рамками-картинами ───────────────────────
+            # Тёмные полосы — имитация панелей стен
+            for xi in range(0, int(self._ww) + 200, 200):
+                arcade.draw_line(xi, 0, xi, self._wh, (32, 20, 50, 80), 1)
+            for yi in range(0, int(self._wh) + 150, 150):
+                arcade.draw_line(0, yi, self._ww, yi, (32, 20, 50, 60), 1)
+
+            # Декоративные пустые рамки на стенах
+            _rnd.seed(42)
+            for _ in range(22):
+                fx = _rnd.randint(60, int(self._ww) - 60)
+                fy = _rnd.randint(80, int(self._wh) - 80)
+                fw = _rnd.randint(50, 90)
+                fh = _rnd.randint(40, 70)
+                # Рамка — серая
+                arcade.draw_rectangle_outline(fx, fy, fw, fh, (55, 40, 75), 2)
+                # Внутри — цветное пятно (залитое чернилами)
+                ink_c = _rnd.choice([
+                    (120, 40, 180, 60), (180, 40, 100, 60),
+                    (40, 100, 180, 60), (160, 160, 40, 50),
+                ])
+                arcade.draw_rectangle_filled(fx, fy, fw - 6, fh - 6, ink_c)
+
+            # ── Стены с имитацией покраски ───────────────────────────────────
             self.walls.draw()
+            for spr in self.walls:
+                arcade.draw_rectangle_outline(
+                    spr.center_x, spr.center_y,
+                    spr.width, spr.height,
+                    (60, 35, 85, 140), 1)
 
-            # Враги: агрессивные подсвечиваются красным контуром
+            # ── Враги — серые роботы ─────────────────────────────────────────
             for robot in self.enemies:
-                color = (75, 75, 85)
-                robot.color = (180, 60, 60) if robot.aggroed else color
+                robot.color = (175, 55, 55) if robot.aggroed else (68, 68, 80)
+                # Свечение вокруг агрессивных
+                if robot.aggroed:
+                    arcade.draw_circle_filled(
+                        robot.center_x, robot.center_y,
+                        28, (200, 50, 50, 35))
             self._enemy_sl.draw()
+            # Глаза-диоды на роботах
+            for robot in self.enemies:
+                eye_col = (255, 80, 80) if robot.aggroed else (80, 80, 120)
+                arcade.draw_circle_filled(
+                    robot.center_x - 6, robot.center_y + 10, 4, eye_col)
+                arcade.draw_circle_filled(
+                    robot.center_x + 6, robot.center_y + 10, 4, eye_col)
 
-            self.p_bullets.draw()
-            self.e_bullets.draw()
+            # ── Снаряды ──────────────────────────────────────────────────────
+            # Фиолетовые чернила — всегда рисуем вручную (игнорируем цвет спрайта)
+            for b in self.p_bullets:
+                arcade.draw_circle_filled(
+                    b.center_x, b.center_y, 11, (100, 20, 160, 60))
+                arcade.draw_circle_filled(
+                    b.center_x, b.center_y, 7, (160, 40, 220))
+                arcade.draw_circle_filled(
+                    b.center_x, b.center_y, 4, (210, 120, 255))
+            # Снаряды врагов — тускло-серые
+            for b in self.e_bullets:
+                arcade.draw_circle_filled(
+                    b.center_x, b.center_y, 8, (80, 75, 100, 70))
+                arcade.draw_circle_filled(
+                    b.center_x, b.center_y, 5, (155, 150, 175))
 
+            # ── Финиш — светящийся портал ────────────────────────────────────
             if self._finish_open:
                 self._finish_sl.draw()
                 if self.finish:
-                    arcade.draw_circle_outline(
-                        self.finish.center_x, self.finish.center_y,
-                        35, (100, 255, 140), 3,
-                    )
+                    for ring in range(3):
+                        arcade.draw_circle_outline(
+                            self.finish.center_x, self.finish.center_y,
+                            30 + ring * 10,
+                            (80 + ring * 40, 220, 120, 80 - ring * 20), 2)
+
             self.ps.draw()
 
+            # ── Игрок — Клякса ───────────────────────────────────────────────
             if self.player:
                 p = self.player
-                # Мигание при неуязвимости
+                # Мигание
                 if self._hurt_cd > 0 and int(self._hurt_cd * 8) % 2:
-                    color_p = (255, 120, 120)
+                    body_c = (255, 100, 100)
                 else:
-                    color_p = C_KLYAKSA
+                    body_c = C_KLYAKSA
+                # Берет
+                arcade.draw_ellipse_filled(
+                    p.center_x, p.center_y + 24, 26, 10, (100, 30, 160))
                 arcade.draw_rectangle_filled(
-                    p.center_x, p.center_y, 28, 44, color_p)
+                    p.center_x - 1, p.center_y + 28, 8, 6, (80, 20, 130))
+                # Тело
+                arcade.draw_rectangle_filled(
+                    p.center_x, p.center_y, 26, 40, body_c)
+                # Шарф
+                arcade.draw_rectangle_filled(
+                    p.center_x, p.center_y + 12, 28, 8, (200, 50, 80))
                 # Пушка
                 arcade.draw_rectangle_filled(
-                    p.center_x + 20, p.center_y + 6, 22, 8, (80, 20, 130))
+                    p.center_x + 18, p.center_y + 4, 24, 8, (60, 15, 110))
+                arcade.draw_circle_filled(
+                    p.center_x + 30, p.center_y + 4, 5, (150, 40, 220))
 
         with self.gcam.activate():
+            # Нижняя панель HUD
+            arcade.draw_rectangle_filled(
+                SCREEN_W // 2, 24, SCREEN_W, 48, (12, 6, 22, 210))
+            arcade.draw_line(0, 48, SCREEN_W, 48, (80, 40, 120, 140), 1)
             self._hud(f"Враги: {self._killed}/{self._total}")
-
             # Жизни
             for i in range(MAX_LIVES):
-                col = (220, 80, 80) if i < self._lives else (60, 50, 60)
+                col = (210, 70, 70) if i < self._lives else (50, 40, 55)
                 arcade.draw_text("♥", 12 + i * 28, SCREEN_H - 52, col, 20)
-
             if not self._finish_open:
                 self._txt_hint.text = (
                     f"Убей всех врагов! Осталось: {self._total - self._killed}"
@@ -394,11 +475,10 @@ class Chapter3View(BaseChapter):
             else:
                 self._txt_hint.text = "Все враги повержены! Иди к финишу!"
                 self._txt_hint.draw()
-
             arcade.draw_text(
-                "WASD — движение  |  ЛКМ — стрелять чернилами  "
-                "|  Красные роботы — агрессивны",
-                SCREEN_W // 2, 12, (160, 130, 200), 11, anchor_x="center",
+                "↑/W/ПРОБЕЛ — прыжок  |  F — авто-выстрел  "
+                "|  J — вправо  G — влево  |  ЛКМ — мышь",
+                SCREEN_W // 2, 12, (140, 110, 180), 11, anchor_x="center",
             )
 
     # ── Input ─────────────────────────────────────────────────────────────────
@@ -408,11 +488,51 @@ class Chapter3View(BaseChapter):
             if self.engine and self.engine.can_jump() and self.player:
                 self.player.change_y = JUMP_V
                 self._play(self._snd_jump)
+        # Стрельба клавиатурой
+        elif key in SHOOT_KEYS_AUTO:
+            self._shoot_keyboard(auto=True)
+        elif key in SHOOT_KEYS_RIGHT:
+            self._shoot_keyboard(angle=0.0)
+        elif key in SHOOT_KEYS_LEFT:
+            self._shoot_keyboard(angle=math.pi)
 
     def on_key_release(self, key: int, mod: int) -> None:
         super().on_key_release(key, mod)
 
+    def _shoot_keyboard(self, auto: bool = False,
+                        angle: float = 0.0) -> None:
+        """Выстрел с клавиатуры. auto=True → автонаводка на ближайшего врага."""
+        if not self.player or self._shoot_cd > 0:
+            return
+        self._shoot_cd = 0.22
+
+        if auto and self.enemies:
+            # Ищем ближайшего живого врага
+            px, py = self.player.center_x, self.player.center_y
+            nearest = min(
+                self.enemies,
+                key=lambda e: math.dist((e.center_x, e.center_y), (px, py)),
+            )
+            angle = math.atan2(
+                nearest.center_y - py,
+                nearest.center_x - px,
+            )
+        elif auto:
+            # Нет врагов — стреляем вправо
+            angle = 0.0
+
+        b = InkBullet(
+            self.player.center_x + math.cos(angle) * 22,
+            self.player.center_y + math.sin(angle) * 22,
+            angle,
+        )
+        self.p_bullets.append(b)
+        self.ps.emit_ink(self.player.center_x, self.player.center_y)
+        self._play(self._snd_shoot)
+
     def on_mouse_press(self, x: float, y: float, btn: int, _m: int) -> None:
+        if btn == arcade.MOUSE_BUTTON_LEFT and self._menu_btn_hit(x, y):
+            self._go_menu(); return
         if btn != arcade.MOUSE_BUTTON_LEFT:
             return
         if not self.player or self._shoot_cd > 0:

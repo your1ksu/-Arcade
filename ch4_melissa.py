@@ -150,33 +150,141 @@ class Chapter4View(BaseChapter):
         self._follow(self.player.center_x, self.player.center_y, WORLD, WORLD)
 
     def on_draw(self) -> None:
+        import random as _rnd
         self.clear()
         self.background_color = _FIELD_BG[self.level - 1]
 
         with self.wcam.activate():
-            # Улей
-            arcade.draw_circle_filled(self._hive_x, self._hive_y, 42, C_HIVE)
-            arcade.draw_text("УЛЕЙ", self._hive_x, self._hive_y,
-                             (60, 40, 0), 12,
-                             anchor_x="center", anchor_y="center", bold=True)
-            # Зона сдачи
-            arcade.draw_circle_outline(self._hive_x, self._hive_y, 72,
-                                       (220, 200, 60, 80), 2)
+            # ── Травяное поле — мягкие пятна и стебли ───────────────────────
+            WORLD_L = 1200
+            grass_tints = [
+                (45, 85, 38, 55), (65, 58, 14, 50), (50, 38, 68, 50),
+            ]
+            gt = grass_tints[self.level - 1]
+            _rnd.seed(self.level * 7)
+            for _ in range(80):
+                gx = _rnd.randint(0, WORLD_L)
+                gy = _rnd.randint(0, WORLD_L)
+                gr = _rnd.randint(18, 45)
+                arcade.draw_circle_filled(gx, gy, gr, gt)
+            # Стебли
+            for _ in range(160):
+                sx = _rnd.randint(0, WORLD_L)
+                sy = _rnd.randint(0, WORLD_L)
+                sh = _rnd.randint(12, 30)
+                col = _rnd.choice([
+                    (55, 110, 42, 80), (70, 130, 50, 70), (45, 90, 35, 90),
+                ])
+                arcade.draw_line(sx, sy, sx + _rnd.randint(-5, 5), sy + sh,
+                                 col, 1)
 
-            self.flowers.draw()
-            self.wasps.draw()
+            # ── Улей — детальный ─────────────────────────────────────────────
+            hx, hy = self._hive_x, self._hive_y
+            # Тень
+            arcade.draw_ellipse_filled(hx + 5, hy - 38, 70, 16, (0, 0, 0, 60))
+            # Подставка
+            arcade.draw_rectangle_filled(hx, hy - 40, 60, 10, (110, 80, 18))
+            # Купол
+            arcade.draw_circle_filled(hx, hy, 42, C_HIVE)
+            # Сотовые соты
+            for i in range(6):
+                a = math.radians(60 * i)
+                hx2 = hx + math.cos(a) * 18
+                hy2 = hy + math.sin(a) * 18
+                pts = [(hx2 + 9*math.cos(math.radians(60*i)),
+                         hy2 + 9*math.sin(math.radians(60*i))) for i in range(6)]
+                arcade.draw_polygon_filled(pts, (195, 148, 18))
+            pts = [(hx + 9*math.cos(math.radians(60*i)),
+                    hy + 9*math.sin(math.radians(60*i))) for i in range(6)]
+            arcade.draw_polygon_filled(pts, (195, 148, 18))
+            # Ободок и зона сдачи
+            arcade.draw_circle_outline(hx, hy, 42, (240, 200, 50), 2)
+            arcade.draw_circle_outline(hx, hy, 72, (220, 200, 55, 90), 2)
+            arcade.draw_text("УЛЕЙ", hx, hy, (45, 30, 0), 13,
+                             anchor_x="center", anchor_y="center", bold=True)
+
+            # ── Цветки — лепестки ─────────────────────────────────────────────
+            field_flower_colors = [
+                (200, 140, 220),   # весна — сиреневый
+                (240, 195, 35),    # лето — жёлтый
+                (220, 120, 70),    # осень — рыжий
+            ]
+            fc = field_flower_colors[self.level - 1]
+            for f in self.flowers:
+                if not f.depleted:
+                    fx2, fy2 = f.center_x, f.center_y
+                    arcade.draw_line(fx2, fy2 - 14, fx2, fy2 - 28,
+                                     (55, 120, 40), 2)
+                    for i in range(5):
+                        a = math.radians(72 * i)
+                        arcade.draw_circle_filled(
+                            fx2 + math.cos(a) * 9,
+                            fy2 + math.sin(a) * 9, 6, fc)
+                    arcade.draw_circle_filled(fx2, fy2, 5, (255, 240, 80))
+                else:
+                    arcade.draw_circle_filled(
+                        f.center_x, f.center_y, 5, (80, 70, 55))
+
+            # ── Осы — детальные ──────────────────────────────────────────────
+            for w in self.wasps:
+                wx, wy = w.center_x, w.center_y
+                # Тельце с полосками
+                arcade.draw_ellipse_filled(wx, wy, 30, 16, (190, 50, 50))
+                for i in range(3):
+                    bx2 = wx - 8 + i * 8
+                    arcade.draw_line(bx2, wy - 7, bx2, wy + 7,
+                                     (20, 14, 0, 160), 3)
+                # Крылья
+                arcade.draw_ellipse_filled(
+                    wx - 10, wy + 10, 16, 7, (200, 225, 255, 150))
+                arcade.draw_ellipse_filled(
+                    wx + 10, wy + 10, 16, 7, (200, 225, 255, 150))
+                # Глаз
+                arcade.draw_circle_filled(wx + 10, wy + 3, 3, (255, 60, 60))
+
             self.stingers.draw()
             self.ps.draw()
 
+            # ── Мелисса — детальная ──────────────────────────────────────────
             if self.player:
                 p = self.player
-                arcade.draw_circle_filled(p.center_x, p.center_y, 17, C_MELISSA)
+                px2, py2 = p.center_x, p.center_y
+                # Тень
                 arcade.draw_ellipse_filled(
-                    p.center_x - 14, p.center_y + 6, 14, 8, (200, 230, 255, 160))
+                    px2 + 3, py2 - 3, 28, 10, (0, 0, 0, 60))
+                # Тело
+                arcade.draw_ellipse_filled(px2, py2, 28, 22, C_MELISSA)
+                # Полоски — чёрные
+                for i in range(3):
+                    bx2 = px2 - 8 + i * 8
+                    arcade.draw_line(bx2, py2 - 10, bx2, py2 + 10,
+                                     (30, 20, 0), 3)
+                # Крылья
                 arcade.draw_ellipse_filled(
-                    p.center_x + 14, p.center_y + 6, 14, 8, (200, 230, 255, 160))
+                    px2 - 16, py2 + 10, 20, 10, (215, 240, 255, 170))
+                arcade.draw_ellipse_filled(
+                    px2 + 16, py2 + 10, 20, 10, (215, 240, 255, 170))
+                arcade.draw_ellipse_outline(
+                    px2 - 16, py2 + 10, 20, 10, (180, 220, 255, 120), 1)
+                arcade.draw_ellipse_outline(
+                    px2 + 16, py2 + 10, 20, 10, (180, 220, 255, 120), 1)
+                # Корона
+                for i in range(3):
+                    cx3 = px2 - 6 + i * 6
+                    arcade.draw_triangle_filled(
+                        cx3 - 3, py2 + 14,
+                        cx3 + 3, py2 + 14,
+                        cx3, py2 + 20,
+                        (240, 200, 30))
+                # Глаз
+                arcade.draw_circle_filled(px2 + 9, py2 + 5, 3, (30, 20, 0))
+                arcade.draw_circle_filled(px2 + 10, py2 + 6, 1, (255, 255, 255))
 
         with self.gcam.activate():
+            bg_hud = tuple(max(0, c - 20) for c in _FIELD_BG[self.level - 1])
+            arcade.draw_rectangle_filled(
+                SCREEN_W // 2, 24, SCREEN_W, 48, (*bg_hud, 210))
+            arcade.draw_line(0, 48, SCREEN_W, 48, (140, 120, 40, 120), 1)
             self._hud(f"Нектар: {self._nectar}/{MAX_NECTAR_M}")
             draw_bar(130, SCREEN_H - 48, 200, 16,
                      self._hive_hp, HIVE_HP, fill=C_HIVE, label="Улей")
@@ -185,9 +293,9 @@ class Chapter4View(BaseChapter):
                                    f"({'✓ Лети в улей!' if self._nectar > 0 else ''})")
             self._txt_goal.draw()
             arcade.draw_text(
-                "WASD — полёт  |  ПРОБЕЛ — жало  |  подлети к цветку — нектар  "
-                "|  улей — сдать",
-                SCREEN_W // 2, 12, (160, 150, 100), 11, anchor_x="center",
+                "WASD — полёт  |  ПРОБЕЛ — жало (авто)  "
+                "|  подлети к цветку — нектар  |  улей — сдать",
+                SCREEN_W // 2, 12, (150, 135, 80), 11, anchor_x="center",
             )
 
     def on_key_press(self, key: int, mod: int) -> None:

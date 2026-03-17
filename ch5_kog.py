@@ -18,8 +18,13 @@ OX = (SCREEN_W - G_COLS * G_CELL) // 2
 OY = (SCREEN_H - G_ROWS * G_CELL) // 2
 
 _LEVELS = [
-    {"fixed": [(2, 2)],          "src": (0, 2), "tgt": (4, 2), "par": 3},
-    {"fixed": [(1, 1), (3, 3)],  "src": (0, 0), "tgt": (4, 4), "par": 4},
+    # Уровень 1: прямая линия через фиксированную (2,2). Нужно 2 шестерёнки: (1,2) и (3,2)
+    {"fixed": [(2, 2)],          "src": (0, 2), "tgt": (4, 2), "par": 2},
+    # Уровень 2: Г-образный путь. Путь: (0,1)→(1,1)→(2,1)f→(3,1)→(3,2)→(3,3)→(4,3)f→(5,3)→(6,3)
+    # Нужно 5 свободных: (1,1),(3,1),(3,2),(3,3),(5,3)
+    {"fixed": [(2, 1), (4, 3)],  "src": (0, 1), "tgt": (6, 3), "par": 5},
+    # Уровень 3: прямая с отвлекающей шестерёнкой (3,0). Путь по строке 2.
+    # Нужно 3 свободных: (2,2),(3,2),(4,2)
     {"fixed": [(1, 2), (3, 0), (5, 2)], "src": (0, 2), "tgt": (6, 2), "par": 5},
 ]
 
@@ -129,37 +134,116 @@ class Chapter5View(BaseChapter):
         self.ps.update(dt)
 
     def on_draw(self) -> None:
+        import math
         self.clear()
-        self.background_color = (20, 20, 30)
+        self.background_color = (16, 14, 22)
+
+        # ── Фоновые декоративные трубы и заклёпки ────────────────────────────
+        pipe_cols = [(28, 22, 40), (32, 26, 45)]
+        for xi in range(0, SCREEN_W + 60, 60):
+            col = pipe_cols[xi // 60 % 2]
+            arcade.draw_rectangle_filled(xi, SCREEN_H // 2, 3, SCREEN_H, col)
+        for yi in range(0, SCREEN_H + 60, 60):
+            col = pipe_cols[yi // 60 % 2]
+            arcade.draw_rectangle_filled(SCREEN_W // 2, yi, SCREEN_W, 3, col)
+        # Заклёпки на пересечениях
+        for xi in range(0, SCREEN_W + 60, 60):
+            for yi in range(0, SCREEN_H + 60, 60):
+                arcade.draw_circle_filled(xi, yi, 3, (40, 34, 55))
+
+        # ── Чертёжная сетка поля ─────────────────────────────────────────────
         for r in range(G_ROWS):
             for c in range(G_COLS):
                 gx = OX + c * G_CELL + G_CELL // 2
                 gy = OY + r * G_CELL + G_CELL // 2
+                # Ячейка с градиентной рамкой
+                arcade.draw_rectangle_filled(
+                    gx, gy, G_CELL - 2, G_CELL - 2, (22, 20, 34))
                 arcade.draw_rectangle_outline(
-                    gx, gy, G_CELL - 4, G_CELL - 4, (50, 55, 65), 1
-                )
-        for g in self._placed():
-            self._draw_gear(g.cx, g.cy, 32,
-                            self._gear_color(g), g.angle)
+                    gx, gy, G_CELL - 2, G_CELL - 2, (55, 48, 72), 1)
+                # Уголки ячейки
+                for sx, sy in [(-1, -1), (1, -1), (-1, 1), (1, 1)]:
+                    corner_x = gx + sx * (G_CELL // 2 - 6)
+                    corner_y = gy + sy * (G_CELL // 2 - 6)
+                    arcade.draw_point(corner_x, corner_y, (75, 60, 95), 3)
+
+        # ── Линии передачи питания между смежными ─────────────────────────────
+        placed = self._placed()
+        for i, g1 in enumerate(placed):
+            for g2 in placed[i + 1:]:
+                if g1.adjacent(g2) and g1.powered and g2.powered:
+                    # Яркая линия
+                    arcade.draw_line(
+                        g1.cx, g1.cy, g2.cx, g2.cy,
+                        (180, 140, 50, 160), 3)
+                    # Искры
+                    mx, my = (g1.cx + g2.cx) / 2, (g1.cy + g2.cy) / 2
+                    arcade.draw_circle_filled(mx, my, 5, (240, 200, 80, 200))
+
+        # ── Шестерёнки ───────────────────────────────────────────────────────
+        for g in placed:
+            self._draw_gear(g.cx, g.cy, 32, self._gear_color(g), g.angle)
+            # Подпись источника/цели
+            if g.src:
+                arcade.draw_text("▶", g.cx, g.cy - 48,
+                                  (100, 210, 140), 13,
+                                  anchor_x="center", anchor_y="center")
+            if g.tgt:
+                arcade.draw_text("★", g.cx, g.cy - 48,
+                                  (220, 110, 50), 13,
+                                  anchor_x="center", anchor_y="center")
+
+        # ── Инвентарь (полочка внизу) ─────────────────────────────────────────
         inv = self._inventory()
-        sx = SCREEN_W // 2 - len(inv) * 55 // 2
+        if inv:
+            shelf_w = len(inv) * 55 + 20
+            shelf_x = SCREEN_W // 2
+            arcade.draw_rectangle_filled(
+                shelf_x, 55, shelf_w, 66, (24, 20, 36))
+            arcade.draw_rectangle_outline(
+                shelf_x, 55, shelf_w, 66, (70, 55, 95), 2)
+            arcade.draw_text(
+                "ЗАПАС", shelf_x, 88,
+                (90, 75, 120), 10, anchor_x="center")
+        sx_inv = SCREEN_W // 2 - len(inv) * 55 // 2
         for i, g in enumerate(inv):
             if g is not self._drag:
-                self._draw_gear(sx + i * 55, 55, 22, (80, 80, 100), g.angle)
+                self._draw_gear(sx_inv + i * 55, 55, 22, (90, 80, 115), g.angle)
+
         if self._drag and not self._drag.placed:
-            self._draw_gear(self._dx, self._dy, 22, (100, 160, 100), 0.0)
+            self._draw_gear(self._dx, self._dy, 22, (110, 170, 110), 0.0)
+
         self.ps.draw()
+
+        # ── Сообщение о победе ────────────────────────────────────────────────
         if self._solved:
+            # Золотое свечение за текстом
+            arcade.draw_rectangle_filled(
+                SCREEN_W // 2, SCREEN_H - 52,
+                420, 44, (40, 30, 10, 180))
+            arcade.draw_rectangle_outline(
+                SCREEN_W // 2, SCREEN_H - 52,
+                420, 44, (200, 160, 40), 2)
             arcade.draw_text(
-                "МЕХАНИЗМ ЗАПУЩЕН!",
-                SCREEN_W // 2, SCREEN_H - 50,
-                (80, 230, 120), 28, anchor_x="center", bold=True,
+                "⚙  МЕХАНИЗМ ЗАПУЩЕН!  ⚙",
+                SCREEN_W // 2, SCREEN_H - 52,
+                (220, 180, 60), 24,
+                anchor_x="center", anchor_y="center", bold=True,
             )
+
         with self.gcam.activate():
+            arcade.draw_rectangle_filled(
+                SCREEN_W // 2, 24, SCREEN_W, 48, (12, 10, 20, 210))
+            arcade.draw_line(0, 48, SCREEN_W, 48, (65, 50, 90, 130), 1)
             self._hud()
+            hints = [
+                "Ур.1: соедини зелёный источник с красной целью по прямой",
+                "Ур.2: путь Г-образный — левая фиксированная шестерня вниз",
+                "Ур.3: веди цепь по средней строке (верхняя шестерня — ловушка)",
+            ]
             arcade.draw_text(
-                "Перетащи шестерёнки мышью (ЛКМ)",
-                SCREEN_W // 2, 14, (140, 135, 160), 12, anchor_x="center",
+                f"💡 {hints[self.level - 1]}",
+                SCREEN_W // 2, 14, (120, 110, 145), 11, anchor_x="center",
             )
 
     @staticmethod
@@ -183,6 +267,8 @@ class Chapter5View(BaseChapter):
         arcade.draw_circle_filled(cx, cy, r // 3, (30, 30, 40))
 
     def on_mouse_press(self, x: float, y: float, btn: int, _m: int) -> None:
+        if btn == arcade.MOUSE_BUTTON_LEFT and self._menu_btn_hit(x, y):
+            self._go_menu(); return
         if btn != arcade.MOUSE_BUTTON_LEFT:
             return
         inv = self._inventory()
